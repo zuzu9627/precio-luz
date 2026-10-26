@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1210">
+<meta name="color-scheme" content="dark">
+<title>Precio de la luz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Panel de pared: hora actual grande arriba, 24 barras debajo, estado y ajustes al pie.
+   Oscuro a propósito: es una pantalla que está siempre encendida. */
+:root{
+  --bg:#0d1210; --panel:#151c18; --line:#25312a; --fg:#e8f0ea; --mute:#8b9d92;
+  --low:#4fd88a; --mid:#f2b84b; --high:#ff6a55; --now:#ffffff;
+  --num:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+  --ui:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:15px;overflow-x:hidden;
+  padding:max(12px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  transition:filter .6s}
+body.night{filter:brightness(.5)}
+#app{min-height:100%;display:flex;flex-direction:column;gap:14px;max-width:980px;margin:0 auto;transition:transform 1s}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+#clock{font-family:var(--num);font-weight:600;font-size:30px;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+#date{color:var(--mute);font-size:14px;text-align:right}#date::first-letter{text-transform:uppercase}
+.hero{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center}
+.hero .lbl{color:var(--mute);font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+#price{grid-column:1/-1;font-family:var(--num);font-weight:700;font-size:clamp(76px,22vw,150px);line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+#price small{font-size:.28em;font-weight:500;color:var(--mute);margin-left:.25em;letter-spacing:.02em}
+#tier{grid-row:1;grid-column:2;font-family:var(--num);font-weight:700;font-size:22px;text-transform:uppercase;letter-spacing:.06em;padding:2px 10px;border-radius:3px;color:#0d1210;background:var(--mute)}
+#tier.low{background:var(--low)} #tier.mid{background:var(--mid)} #tier.high{background:var(--high)}
+#tier:empty{display:none}
+#next{grid-column:1/-1;color:var(--mute);font-size:14px;margin-top:6px;min-height:1.3em}
+#next b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 12px 10px;flex:1;min-height:210px;display:flex;flex-direction:column}
+#bars{flex:1;display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:3px;align-items:end;min-height:150px}
+.col{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent}
+.bar{width:100%;border-radius:2px 2px 0 0;background:var(--mute);min-height:3px}
+.col.low .bar{background:var(--low)} .col.mid .bar{background:var(--mid)} .col.high .bar{background:var(--high)}
+.col.past .bar{opacity:.4}
+.col.none .bar{background:var(--line);height:3px!important}
+.col.now .bar{box-shadow:0 0 0 2px var(--now);}
+.col.now::after{content:"";position:absolute;bottom:-9px;width:6px;height:6px;border-radius:50%;background:var(--now)}
+.col.sel .bar{box-shadow:0 0 0 2px var(--fg)}
+#axis{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:3px;margin-top:14px;font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums;text-align:center}
+#axis span{overflow:visible;white-space:nowrap}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
+.stat .k{color:var(--mute);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.stat .v{font-family:var(--num);font-weight:600;font-size:24px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat .s{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+.stat.low .v{color:var(--low)} .stat.high .v{color:var(--high)}
+footer{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;color:var(--mute);font-size:12px}
+#status.warn{color:var(--mid)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-size:13px;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:4px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--mute)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+button[hidden]{display:none}
+details{width:100%;border-top:1px solid var(--line);padding-top:8px}
+summary{cursor:pointer;color:var(--mute)}
+details p{margin:8px 0;line-height:1.5;max-width:60ch}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+input{flex:1;min-width:200px;font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:7px 10px}
+@media (orientation:landscape) and (max-height:520px){
+  #app{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);grid-template-areas:"h c" "p c" "s c" "f f";gap:10px 14px}
+  header{grid-area:h} .hero{grid-area:p} .chart{grid-area:c;min-height:0} .stats{grid-area:s} footer{grid-area:f}
+  #price{font-size:clamp(64px,16vh,110px)}
+  .stat .v{font-size:20px}
+}
+@media (max-width:420px){.stat .v{font-size:20px}.stats{gap:6px}.stat{padding:7px 8px}#axis{font-size:10px}}
+.list{display:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 14px 10px;flex:1;min-height:0;overflow-y:auto}
+body.v-list .list{display:block}
+body.v-list .hero,body.v-list .chart,body.v-list .stats{display:none}
+body.v-list #app{height:100%;min-height:0}
+.ph{font-family:var(--num);font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:15px;color:var(--mute);padding:12px 0 2px}
+.r{display:grid;grid-template-columns:14px minmax(86px,auto) 32px 1fr;;gap:12px;align-items:center;padding:4px 0;font-family:var(--num);font-weight:600;font-size:25px;font-variant-numeric:tabular-nums;line-height:1.2}
+.r .h{white-space:nowrap}.r>span:last-child{text-align:right;white-space:nowrap}
+.r .ic{font-family:var(--ui);font-size:13px;font-weight:700;text-align:center;color:var(--mute)}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--mute)}
+.dot.g{background:var(--low)}.dot.y{background:#f1dd4b}.dot.o{background:var(--mid)}.dot.r{background:var(--high)}
+.r.past{opacity:.42}
+.r.now{background:rgba(255,255,255,.08);margin:0 -8px;padding:4px 8px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--now)}
+.sumsep{border-top:1px solid var(--line);margin-top:10px}
+@media (orientation:landscape) and (max-height:520px){body.v-list #app{display:flex;flex-direction:column}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div id="clock">--:--</div>
+    <div id="date"></div>
+  </header>
+
+  <section class="hero" aria-live="polite">
+    <div class="lbl" id="lbl">Cargando precios…</div>
+    <div id="price">—<small>€/kWh</small></div>
+    <div id="tier"></div>
+    <div id="next"></div>
+  </section>
+
+  <section class="chart" aria-label="Precio por hora">
+    <div id="bars"></div>
+    <div id="axis"></div>
+  </section>
+
+  <section class="list" id="list" aria-label="Precios por hora"></section>
+
+  <section class="stats">
+    <div class="stat low"><div class="k">Mínimo</div><div class="v" id="sMin">—</div><div class="s" id="sMinH"></div></div>
+    <div class="stat"><div class="k">Media</div><div class="v" id="sAvg">—</div><div class="s">del día</div></div>
+    <div class="stat high"><div class="k">Máximo</div><div class="v" id="sMax">—</div><div class="s" id="sMaxH"></div></div>
+    <div class="stat"><div class="k">Mejor tramo 3 h</div><div class="v" id="sWin">—</div><div class="s" id="sWinM"></div></div>
+  </section>
+
+  <footer>
+    <span id="status">…</span>
+    <div class="btns">
+      <button id="bView">Ver lista</button>
+      <button id="bDay" hidden>Ver mañana</button>
+      <button id="bFull">Pantalla completa</button>
+    </div>
+    <details>
+      <summary>Ajustes</summary>
+      <p>Por defecto se usan fuentes públicas de Red Eléctrica. Si tienes un token personal de ESIOS, pégalo aquí y se usará primero. Se guarda solo en este dispositivo.</p>
+      <div class="row">
+        <input id="token" type="password" autocomplete="off" placeholder="Token de ESIOS (opcional)" aria-label="Token de ESIOS">
+        <button id="bSave">Guardar</button>
+      </div>
+    </details>
+  </footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+var TZ='Europe/Madrid';
+var $=function(id){return document.getElementById(id)};
+var store={}, source='', fetchedAt=0, failed=false, view='today', sel=null, scrollPending=false;
+var mode=(function(){try{return localStorage.getItem('pvpc-mode')==='list'?'list':'chart'}catch(e){return 'chart'}})();
+
+/* ---------- utilidades ---------- */
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}return null}
+function nowMadrid(){
+  var p={};new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'})
+    .formatToParts(new Date()).forEach(function(x){p[x.type]=x.value});
+  return {date:p.year+'-'+p.month+'-'+p.day,h:+p.hour,m:+p.minute};
+}
+function addDays(d,n){var t=new Date(d+'T12:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)}
+function f3(v){return v.toLocaleString('es-ES',{minimumFractionDigits:3,maximumFractionDigits:3})}
+function hh(h){return (h<10?'0':'')+h+':00'}
+function pad(n){return (n<10?'0':'')+n}
+
+/* ---------- periodos 2.0TD ---------- */
+function easter(y){var a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),
+  h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),
+  mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(Date.UTC(y,mo-1,da,12))}
+function isHoliday(date){
+  var y=+date.slice(0,4),md=date.slice(5);
+  if(['01-01','01-06','05-01','08-15','10-12','11-01','12-06','12-08','12-25'].indexOf(md)>=0)return true;
+  var gf=easter(y);gf.setUTCDate(gf.getUTCDate()-2);return gf.toISOString().slice(0,10)===date;
+}
+function period(date,h){
+  var wd=new Date(date+'T12:00:00Z').getUTCDay();
+  if(wd===0||wd===6||isHoliday(date)||h<8)return 'valle';
+  if(h<10||(h>=14&&h<18)||h>=22)return 'llano';
+  return 'punta';
+}
+function f5(v){return v.toLocaleString('es-ES',{minimumFractionDigits:5,maximumFractionDigits:5})}
+function lvl(v,min,max){
+  var x=max>min?(v-min)/(max-min):0;
+  return {dot:x<.15?'g':x<.25?'y':x<.4?'o':'r', ic:v===min?'✓':v===max?'⛔':x>=.8?'!!':x>=.5?'!':x>=.25?'⚠':'OK'};
+}
+
+/* ---------- fuentes ---------- */
+function getJSON(url,opts){
+  var ctl=new AbortController(), t=setTimeout(function(){ctl.abort()},12000);
+  opts=opts||{}; opts.signal=ctl.signal;
+  return fetch(url,opts).then(function(r){clearTimeout(t);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()});
+}
+function fromESIOS(a,b,token){
+  var u='https://api.esios.ree.es/indicators/1001?start_date='+a+'T00:00:00&end_date='+b+'T23:59:59&geo_ids[]=8741&time_trunc=hour';
+  return getJSON(u,{headers:{'Accept':'application/json; application/vnd.esios-api-v1+json','x-api-key':token}}).then(function(j){
+    return j.indicator.values.filter(function(v){return v.geo_id===8741}).map(function(v){
+      return {date:v.datetime.slice(0,10),h:+v.datetime.slice(11,13),price:v.value/1000}});
+  });
+}
+function fromREData(a,b){
+  var u='https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real?start_date='+a+'T00:00&end_date='+b+'T23:59&time_trunc=hour';
+  return getJSON(u).then(function(j){
+    var inc=(j.included||[]).filter(function(i){return /pvpc/i.test((i.type||'')+' '+((i.attributes&&i.attributes.title)||''))})[0];
+    if(!inc)throw new Error('sin serie PVPC');
+    return inc.attributes.values.map(function(v){return {date:v.datetime.slice(0,10),h:+v.datetime.slice(11,13),price:v.value/1000}});
+  });
+}
+function fromPDLL(){
+  return getJSON('https://api.preciodelaluz.org/v1/prices/all?zone=PCB').then(function(j){
+    return Object.keys(j).map(function(k){var x=j[k];return {date:x.date,h:+x.hour.slice(0,2),price:x.price/1000}});
+  });
+}
+function load(){
+  var n=nowMadrid(), a=n.date, b=addDays(a,1), token=ls('esios-token');
+  var chain=[];
+  if(token)chain.push(['ESIOS (token)',function(){return fromESIOS(a,b,token)}]);
+  chain.push(['REData (Red Eléctrica)',function(){return fromREData(a,b)}]);
+  chain.push(['preciodelaluz.org',fromPDLL]);
+  var i=0;
+  function next(){
+    if(i>=chain.length){failed=true;render();return Promise.resolve()}
+    var c=chain[i++];
+    return c[1]().then(function(rows){
+      if(!rows.length)throw new Error('vacío');
+      var s={};rows.forEach(function(r){(s[r.date]=s[r.date]||{})[r.h]=r.price});
+      if(!s[a])throw new Error('sin datos de hoy');
+      store=s;source=c[0];fetchedAt=Date.now();failed=false;
+      ls('pvpc-cache',JSON.stringify({store:store,source:source,at:fetchedAt}));
+      render();
+    }).catch(function(){return next()});
+  }
+  return next();
+}
+(function restore(){
+  try{var c=JSON.parse(ls('pvpc-cache')||'null');if(c&&c.store){store=c.store;source=c.source;fetchedAt=c.at}}catch(e){}
+})();
+
+/* ---------- render ---------- */
+function tierOf(v,sorted){
+  var q1=sorted[Math.floor(sorted.length/3)], q2=sorted[Math.floor(sorted.length*2/3)];
+  return v<=q1?'low':(v>=q2?'high':'mid');
+}
+var TXT={low:'Barata',mid:'Normal',high:'Cara'};
+
+function render(){
+  var n=nowMadrid(), today=n.date, tmr=addDays(today,1);
+  var hasTmr=!!(store[tmr]&&Object.keys(store[tmr]).length>=20);
+  if(view==='tomorrow'&&!hasTmr)view='today';
+  var date=view==='tomorrow'?tmr:today, day=store[date]||{};
+  var isToday=view==='today';
+
+  $('clock').textContent=pad(n.h)+':'+pad(n.m);
+  $('date').textContent=new Intl.DateTimeFormat('es-ES',{timeZone:TZ,weekday:'long',day:'numeric',month:'long'}).format(new Date());
+  $('bDay').hidden=!hasTmr;
+  $('bDay').textContent=isToday?'Ver mañana':'Ver hoy';
+  document.body.classList.toggle('night',n.h<7);
+
+  var vals=[],h;
+  for(h=0;h<24;h++)if(typeof day[h]==='number')vals.push(day[h]);
+  var sorted=vals.slice().sort(function(a,b){return a-b});
+  var max=sorted.length?sorted[sorted.length-1]:1;
+
+  /* barras */
+  var bars=$('bars'),axis=$('axis');bars.textContent='';axis.textContent='';
+  for(h=0;h<24;h++){
+    var c=document.createElement('div'),b=document.createElement('div'),v=day[h];
+    c.className='col';b.className='bar';
+    if(typeof v==='number'){
+      c.classList.add(tierOf(v,sorted));
+      b.style.height=Math.max(4,v/max*100)+'%';
+    }else c.classList.add('none');
+    if(isToday&&h<n.h)c.classList.add('past');
+    if(isToday&&h===n.h)c.classList.add('now');
+    if(sel===h)c.classList.add('sel');
+    c.title=hh(h)+' · '+(typeof v==='number'?f3(v)+' €/kWh':'sin dato');
+    c.dataset.h=h;c.appendChild(b);bars.appendChild(c);
+    var s=document.createElement('span');s.textContent=(h%3===0)?pad(h):'';axis.appendChild(s);
+  }
+
+  /* hero */
+  var showH=sel!==null?sel:(isToday?n.h:null), p=showH!==null?day[showH]:undefined;
+  var tier=$('tier'), next=$('next');
+  if(!sorted.length){
+    $('lbl').textContent=failed?'Sin conexión':'Cargando precios…';
+    $('price').innerHTML='—<small>€/kWh</small>';tier.textContent='';tier.className='';next.textContent='';
+  }else if(showH!==null&&typeof p==='number'){
+    $('lbl').textContent=(sel!==null?(isToday?'Hoy':'Mañana')+', ':(isToday?'Ahora, ':''))+hh(showH)+' – '+hh((showH+1)%24);
+    $('price').innerHTML=f3(p)+'<small>€/kWh</small>';
+    var t=tierOf(p,sorted);tier.textContent=TXT[t];tier.className=t;
+    var nx=day[showH+1];
+    next.innerHTML=(typeof nx==='number')
+      ?'Siguiente hora, '+hh(showH+1)+': <b>'+f3(nx)+'</b> '+(nx>p+0.0005?'▲ sube':(nx<p-0.0005?'▼ baja':'= igual')):'';
+  }else{
+    var avg=vals.reduce(function(a,b){return a+b},0)/vals.length;
+    $('lbl').textContent='Mañana, media del día';
+    $('price').innerHTML=f3(avg)+'<small>€/kWh</small>';tier.textContent='';tier.className='';
+    next.textContent='Toca una barra para ver el precio de esa hora.';
+  }
+
+  /* estadísticas */
+  function setStat(id,hid,pick){
+    if(!sorted.length){$(id).textContent='—';$(hid).textContent='';return}
+    var hh_=null;for(h=0;h<24;h++)if(day[h]===pick){hh_=h;break}
+    $(id).textContent=f3(pick);$(hid).textContent=hh_===null?'':hh(hh_);
+  }
+  setStat('sMin','sMinH',sorted[0]);
+  setStat('sMax','sMaxH',max);
+  $('sAvg').textContent=sorted.length?f3(vals.reduce(function(a,b){return a+b},0)/vals.length):'—';
+  var best=null,from=isToday?n.h:0;
+  for(h=from;h<=21;h++){
+    if(typeof day[h]!=='number'||typeof day[h+1]!=='number'||typeof day[h+2]!=='number')continue;
+    var m=(day[h]+day[h+1]+day[h+2])/3;if(best===null||m<best.m)best={h:h,m:m};
+  }
+  $('sWin').textContent=best?hh(best.h).slice(0,2)+'–'+pad(best.h+3):'—';
+  $('sWinM').textContent=best?'media '+f3(best.m):'';
+
+  /* lista */
+  document.body.classList.toggle('v-list',mode==='list');
+  $('bView').textContent=mode==='list'?'Ver gráfico':'Ver lista';
+  var L=$('list'),html='',lastP='',min=sorted[0],ps={valle:[],llano:[],punta:[]};
+  function row(label,v,cls,extra){var l=lvl(v,min,max);
+    return '<div class="r '+(cls||'')+'"><span class="dot '+l.dot+'"></span><span class="h">'+label+'</span><span class="ic">'+l.ic+'</span><span>'+f5(v)+(extra||'')+'</span></div>'}
+  if(mode==='list'&&sorted.length){
+    for(h=0;h<24;h++){
+      var v2=day[h];if(typeof v2!=='number')continue;
+      var pr=period(date,h);ps[pr].push(v2);
+      if(pr!==lastP){html+='<div class="ph">Período '+pr+'</div>';lastP=pr}
+      html+=row(pad(h)+' a '+pad((h+1)%24)+'h',v2,(isToday&&h<n.h?'past ':'')+(isToday&&h===n.h?'now':''));
+    }
+    function hr(v){for(var k=0;k<24;k++)if(day[k]===v)return ' <span style="font-size:.6em;color:var(--mute)">('+pad(k)+'-'+pad((k+1)%24)+'h)</span>';return ''}
+    function av(a){return a.reduce(function(x,y){return x+y},0)/a.length}
+    html+='<div class="sumsep"></div>'+row('Mínimo'+hr(min),min)+row('Máximo'+hr(max),max)+row('Media total',av(vals));
+    ['valle','punta','llano'].forEach(function(k){if(ps[k].length)html+=row('Media '+k,av(ps[k]))});
+    L.innerHTML=html;
+    if(scrollPending){scrollPending=false;var cur=L.querySelector('.r.now');if(cur)L.scrollTop=cur.offsetTop-L.clientHeight/3}
+  }else if(mode==='list'){L.textContent=failed?'Sin conexión':'Cargando precios…'}
+
+  /* estado */
+  var st=$('status');
+  if(failed){st.className='warn';st.textContent='No se pudo actualizar'+(fetchedAt?' · datos guardados de '+new Date(fetchedAt).toLocaleTimeString('es-ES',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}):'')}
+  else if(fetchedAt){st.className='';st.textContent='PVPC 2.0TD · '+source+' · actualizado '+new Date(fetchedAt).toLocaleTimeString('es-ES',{timeZone:TZ,hour:'2-digit',minute:'2-digit'})}
+  else{st.className='';st.textContent='Conectando…'}
+}
+
+/* ---------- interacción ---------- */
+$('bars').addEventListener('click',function(e){
+  var c=e.target.closest('.col');if(!c)return;
+  var h=+c.dataset.h;sel=(sel===h)?null:h;render();
+});
+$('bView').addEventListener('click',function(){mode=(mode==='list')?'chart':'list';ls('pvpc-mode',mode);scrollPending=true;render()});
+$('bDay').addEventListener('click',function(){view=(view==='today')?'tomorrow':'today';sel=null;render()});
+$('bFull').addEventListener('click',function(){
+  var el=document.documentElement;
+  try{(el.requestFullscreen||el.webkitRequestFullscreen).call(el)}catch(e){}
+  wake();
+});
+$('token').value=ls('esios-token')||'';
+$('bSave').addEventListener('click',function(){
+  var v=$('token').value.trim();ls('esios-token',v||null);$('bSave').textContent='Guardado';
+  setTimeout(function(){$('bSave').textContent='Guardar'},1500);load();
+});
+
+/* pantalla siempre encendida */
+var lock=null;
+function wake(){try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(function(l){lock=l}).catch(function(){})}catch(e){}}
+document.addEventListener('visibilitychange',function(){if(!document.hidden){wake();render()}});
+
+/* desplazamiento leve cada minuto para no marcar siempre los mismos píxeles */
+function drift(){var dx=Math.round(Math.random()*12-6),dy=Math.round(Math.random()*12-6);$('app').style.transform='translate('+dx+'px,'+dy+'px)'}
+
+/* ---------- arranque ---------- */
+scrollPending=true;render();wake();load();
+setInterval(function(){render()},20000);
+setInterval(load,15*60*1000);
+setInterval(drift,60000);
+})();
+</script>
+</body>
+</html>
